@@ -4,7 +4,7 @@ import React from 'react';
 
 export type InputSize = 'sm' | 'md' | 'lg';
 
-interface InputProps extends React.InputHTMLAttributes<HTMLInputElement> {
+interface InputProps extends Omit<React.InputHTMLAttributes<HTMLInputElement>, 'size'> {
   label?: string;
   error?: string;
   size?: InputSize;

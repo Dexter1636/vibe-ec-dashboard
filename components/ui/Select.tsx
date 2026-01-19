@@ -4,7 +4,7 @@ import React from 'react';
 
 export type SelectSize = 'sm' | 'md' | 'lg';
 
-interface SelectProps extends React.SelectHTMLAttributes<HTMLSelectElement> {
+interface SelectProps extends Omit<React.SelectHTMLAttributes<HTMLSelectElement>, 'size'> {
   label?: string;
   error?: string;
   size?: SelectSize;

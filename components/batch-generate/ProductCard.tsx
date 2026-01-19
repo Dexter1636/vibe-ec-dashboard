@@ -54,16 +54,17 @@ export const ProductCard: React.FC<ProductCardProps> = ({
         </div>
 
         {/* 参考素材 */}
-        {(product.referenceImages?.length > 0 || product.referenceLinks?.length > 0) && (
+        {(product.referenceImages && product.referenceImages.length > 0) ||
+         (product.referenceLinks && product.referenceLinks.length > 0) ? (
           <div className="text-xs text-blue-600">
-            {product.referenceImages?.length > 0 && (
+            {product.referenceImages && product.referenceImages.length > 0 && (
               <span>📎 {product.referenceImages.length} 张参考图 </span>
             )}
-            {product.referenceLinks?.length > 0 && (
+            {product.referenceLinks && product.referenceLinks.length > 0 && (
               <span>🔗 {product.referenceLinks.length} 个参考链接</span>
             )}
           </div>
-        )}
+        ) : null}
 
         {/* 保存到素材库标记 */}
         {product.saveToLibrary && (
