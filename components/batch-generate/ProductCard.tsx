@@ -3,18 +3,25 @@
 import React from 'react';
 import { Product } from '@/types';
 import { Button, Tag } from '@/components/ui';
+import { ImageAnalysisButton } from '@/components/image-analysis';
 import { format } from 'date-fns';
 
 interface ProductCardProps {
   product: Product;
   onEdit?: (product: Product) => void;
   onDelete?: (id: string) => void;
+  onAnalyzeImage?: (productId: string, imageIndex: number) => void;
+  analyzingImage?: { productId: string; imageIndex: number } | null;
+  hasAnalysisResult?: (productId: string, imageIndex: number) => boolean;
 }
 
 export const ProductCard: React.FC<ProductCardProps> = ({
   product,
   onEdit,
   onDelete,
+  onAnalyzeImage,
+  analyzingImage,
+  hasAnalysisResult,
 }) => {
   return (
     <div className="bg-white border border-gray-200 rounded-lg p-4 hover:shadow-md transition-shadow">
@@ -34,6 +41,21 @@ export const ProductCard: React.FC<ProductCardProps> = ({
           </div>
         )}
       </div>
+
+      {/* AI图片分析按钮 */}
+      {product.images.length > 0 && onAnalyzeImage && (
+        <div className="mb-3">
+          <ImageAnalysisButton
+            productId={product.id}
+            imageIndex={0}
+            isAnalyzing={
+              analyzingImage?.productId === product.id && analyzingImage?.imageIndex === 0
+            }
+            hasResult={hasAnalysisResult?.(product.id, 0) || false}
+            onAnalyze={() => onAnalyzeImage(product.id, 0)}
+          />
+        </div>
+      )}
 
       {/* 商品信息 */}
       <div className="space-y-2">

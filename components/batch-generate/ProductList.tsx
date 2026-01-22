@@ -8,12 +8,18 @@ interface ProductListProps {
   products: Product[];
   onEdit?: (product: Product) => void;
   onDelete?: (id: string) => void;
+  onAnalyzeImage?: (productId: string, imageIndex: number) => void;
+  analyzingImage?: { productId: string; imageIndex: number } | null;
+  hasAnalysisResult?: (productId: string, imageIndex: number) => boolean;
 }
 
 export const ProductList: React.FC<ProductListProps> = ({
   products,
   onEdit,
   onDelete,
+  onAnalyzeImage,
+  analyzingImage,
+  hasAnalysisResult,
 }) => {
   if (products.length === 0) {
     return (
@@ -52,6 +58,9 @@ export const ProductList: React.FC<ProductListProps> = ({
             product={product}
             onEdit={onEdit}
             onDelete={onDelete}
+            onAnalyzeImage={onAnalyzeImage}
+            analyzingImage={analyzingImage}
+            hasAnalysisResult={hasAnalysisResult}
           />
         ))}
       </div>

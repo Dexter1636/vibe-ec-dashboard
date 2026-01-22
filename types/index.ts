@@ -5,3 +5,4 @@ export * from './generated';
 export * from './template';
 export * from './material';
 export * from './tiktok';
+export * from './imageAnalysis';

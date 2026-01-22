@@ -6,3 +6,4 @@ export * from './deepseekGenerator';
 // import { generateContent as generateMockContent } from './mockGenerator';
 export * from './storage';
 export * from './testDataGenerator';
+export * from './imageAnalysisGenerator';

@@ -7,8 +7,9 @@ import { OverviewPage } from '@/components/home/OverviewPage';
 import { TemplateLibraryPage } from '@/components/template-library/TemplateLibraryPage';
 import { SettingsPage } from '@/components/settings/SettingsPage';
 import { TikTokStyleSelector, TikTokResultCard } from '@/components/tiktok-copy';
+import { ImageAnalysisResultCard } from '@/components/image-analysis';
 import { Button, Modal } from '@/components/ui';
-import { Product, ProductFormData, GeneratedContent, TikTokCopy, TikTokCopyOptions } from '@/types';
+import { Product, ProductFormData, GeneratedContent, TikTokCopy, TikTokCopyOptions, ImageAnalysisResult } from '@/types';
 import { generateBatchContent, generateId, storage, generateTestData, checkTestImages } from '@/lib';
 
 export default function Home() {
@@ -29,6 +30,10 @@ export default function Home() {
   });
   const [tiktokResults, setTiktokResults] = useState<Map<string, TikTokCopy>>(new Map());
   const [streamingProductId, setStreamingProductId] = useState<string | null>(null);
+
+  // Image analysis states
+  const [imageAnalysisResults, setImageAnalysisResults] = useState<Map<string, ImageAnalysisResult>>(new Map());
+  const [analyzingImage, setAnalyzingImage] = useState<{productId: string, imageIndex: number} | null>(null);
 
   // 添加商品
   const handleAddProduct = (formData: ProductFormData) => {
@@ -415,6 +420,79 @@ export default function Home() {
     }
   };
 
+  // 处理图片分析
+  const handleAnalyzeImage = async (productId: string, imageIndex: number) => {
+    const product = products.find(p => p.id === productId);
+    if (!product) return;
+
+    const key = `${productId}-${imageIndex}`;
+    setAnalyzingImage({ productId, imageIndex });
+
+    // Set initial analyzing status
+    setImageAnalysisResults(prev => new Map(prev).set(key, {
+      id: key,
+      productId,
+      imageIndex,
+      imageUrl: product.images[imageIndex],
+      sellingPoints: [],
+      keywords: [],
+      visualFeatures: { colors: [], style: '' },
+      status: 'analyzing',
+    }));
+
+    try {
+      // Convert blob URL to base64 on client side
+      const imageUrl = product.images[imageIndex];
+      const response = await fetch(imageUrl);
+      const blob = await response.blob();
+
+      // Convert blob to base64 (keep data URL prefix for Qwen API)
+      const base64Image = await new Promise<string>((resolve, reject) => {
+        const reader = new FileReader();
+        reader.onloadend = () => {
+          resolve(reader.result as string);
+        };
+        reader.onerror = reject;
+        reader.readAsDataURL(blob);
+      });
+
+      // Send to API with base64 image data
+      const apiResponse = await fetch('/api/analyze-image', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ product, imageIndex, base64Image }),
+      });
+
+      if (!apiResponse.ok) {
+        const errorData = await apiResponse.json();
+        throw new Error(errorData.error || 'Analysis failed');
+      }
+
+      const data = await apiResponse.json();
+      setImageAnalysisResults(prev => new Map(prev).set(key, data.result));
+    } catch (error) {
+      console.error('Image analysis failed:', error);
+      setImageAnalysisResults(prev => {
+        const result = prev.get(key);
+        if (result) {
+          return new Map(prev).set(key, {
+            ...result,
+            status: 'failed' as const,
+            error: error instanceof Error ? error.message : 'Analysis failed',
+          });
+        }
+        return prev;
+      });
+    } finally {
+      setAnalyzingImage(null);
+    }
+  };
+
+  // 检查是否有分析结果
+  const hasAnalysisResult = (productId: string, imageIndex: number) => {
+    return imageAnalysisResults.has(`${productId}-${imageIndex}`);
+  };
+
   // 渲染商品任务页面
   const renderBatchGeneratePage = () => (
     <div className="space-y-8">
@@ -446,6 +524,9 @@ export default function Home() {
             products={products}
             onEdit={handleEditProduct}
             onDelete={handleDeleteProduct}
+            onAnalyzeImage={handleAnalyzeImage}
+            analyzingImage={analyzingImage}
+            hasAnalysisResult={hasAnalysisResult}
           />
         </div>
 
@@ -597,6 +678,39 @@ export default function Home() {
             onExportAll={handleExportAll}
             onEdit={handleEditResult}
           />
+        </div>
+      )}
+
+      {/* 图片分析结果 */}
+      {imageAnalysisResults.size > 0 && (
+        <div className="glass-effect rounded-2xl shadow-xl border border-slate-200/50 p-8 animate-fade-in">
+          <div className="mb-6">
+            <h2 className="text-xl font-bold bg-gradient-to-r from-violet-600 to-purple-600 bg-clip-text text-transparent">
+              图片分析结果
+            </h2>
+            <p className="text-sm text-slate-500 mt-1">
+              AI视觉分析提取的卖点和关键词
+            </p>
+          </div>
+
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+            {Array.from(imageAnalysisResults.values()).map(result => {
+              const product = products.find(p => p.id === result.productId);
+              if (!product) return null;
+
+              return (
+                <div key={result.id} className="bg-white rounded-xl border border-slate-200 overflow-hidden">
+                  <div className="p-4 border-b border-slate-200">
+                    <h3 className="font-semibold text-gray-900">{product.name}</h3>
+                    <p className="text-xs text-gray-500">图片 {result.imageIndex + 1}</p>
+                  </div>
+                  <div className="p-4">
+                    <ImageAnalysisResultCard result={result} productName={product.name} />
+                  </div>
+                </div>
+              );
+            })}
+          </div>
         </div>
       )}
     </div>

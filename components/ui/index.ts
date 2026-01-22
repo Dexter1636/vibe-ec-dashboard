@@ -6,6 +6,7 @@ export { Textarea } from './Textarea';
 export { Modal } from './Modal';
 export { Tag } from './Tag';
 export { Select } from './Select';
+export { CopyButton } from './CopyButton';
 
 export type { ButtonVariant, ButtonSize } from './Button';
 export type { InputSize } from './Input';
