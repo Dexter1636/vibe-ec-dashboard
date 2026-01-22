@@ -6,8 +6,9 @@ import { ProductForm, ProductList, ResultPreview } from '@/components/batch-gene
 import { OverviewPage } from '@/components/home/OverviewPage';
 import { TemplateLibraryPage } from '@/components/template-library/TemplateLibraryPage';
 import { SettingsPage } from '@/components/settings/SettingsPage';
+import { TikTokStyleSelector, TikTokResultCard } from '@/components/tiktok-copy';
 import { Button, Modal } from '@/components/ui';
-import { Product, ProductFormData, GeneratedContent } from '@/types';
+import { Product, ProductFormData, GeneratedContent, TikTokCopy, TikTokCopyOptions } from '@/types';
 import { generateBatchContent, generateId, storage, generateTestData, checkTestImages } from '@/lib';
 
 export default function Home() {
@@ -19,6 +20,15 @@ export default function Home() {
   const [showAddModal, setShowAddModal] = useState(false);
   const [editingProduct, setEditingProduct] = useState<Product | null>(null);
   const [isLoadingTestData, setIsLoadingTestData] = useState(false);
+
+  // TikTok states
+  const [tiktokOptions, setTiktokOptions] = useState<TikTokCopyOptions>({
+    styleId: 'recommendation',
+    targetLength: 'medium',
+    includeHashtags: true,
+  });
+  const [tiktokResults, setTiktokResults] = useState<Map<string, TikTokCopy>>(new Map());
+  const [streamingProductId, setStreamingProductId] = useState<string | null>(null);
 
   // 添加商品
   const handleAddProduct = (formData: ProductFormData) => {
@@ -318,6 +328,93 @@ export default function Home() {
     }
   };
 
+  // 生成抖音文案
+  const handleGenerateTiktok = async (product: Product) => {
+    setStreamingProductId(product.id);
+
+    // 创建初始结果（streaming 状态）
+    setTiktokResults(prev => new Map(prev).set(product.id, {
+      id: `${product.id}-temp`,
+      productId: product.id,
+      styleId: tiktokOptions.styleId,
+      hook: '',
+      content: '',
+      cta: '',
+      hashtags: [],
+      status: 'streaming',
+      generatedAt: new Date(),
+    }));
+
+    try {
+      const response = await fetch('/api/generate/tiktok', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ product, options: tiktokOptions }),
+      });
+
+      if (!response.ok) {
+        throw new Error('Generation request failed');
+      }
+
+      const reader = response.body?.getReader();
+      const decoder = new TextDecoder();
+
+      if (!reader) {
+        throw new Error('No response body');
+      }
+
+      while (true) {
+        const { done, value } = await reader.read();
+        if (done) break;
+
+        const chunk = decoder.decode(value);
+        const lines = chunk.split('\n').filter(line => line.startsWith('data: '));
+
+        for (const line of lines) {
+          try {
+            const data = JSON.parse(line.slice(6));
+
+            if (data.type === 'start') {
+              // 生成开始
+              console.log('Generation started for product:', data.productId);
+            } else if (data.type === 'streaming') {
+              // 流式更新（忽略，保持 loading 状态）
+              // 不再显示原始 JSON 文本
+            } else if (data.type === 'complete') {
+              // 用解析后的结构化数据替换
+              setTiktokResults(prev => new Map(prev).set(product.id, data.result));
+              setStreamingProductId(null);
+            } else if (data.type === 'error') {
+              console.error('Generation error:', data.error);
+              setTiktokResults(prev => {
+                const copy = prev.get(product.id);
+                if (copy) {
+                  const updated = { ...copy, status: 'failed' as const, error: data.error };
+                  return new Map(prev).set(product.id, updated);
+                }
+                return prev;
+              });
+              setStreamingProductId(null);
+            }
+          } catch (e) {
+            console.error('Failed to parse SSE data:', e);
+          }
+        }
+      }
+    } catch (error) {
+      console.error('TikTok generation failed:', error);
+      setTiktokResults(prev => {
+        const copy = prev.get(product.id);
+        if (copy) {
+          const updated = { ...copy, status: 'failed' as const, error: error instanceof Error ? error.message : '生成失败' };
+          return new Map(prev).set(product.id, updated);
+        }
+        return prev;
+      });
+      setStreamingProductId(null);
+    }
+  };
+
   // 渲染商品任务页面
   const renderBatchGeneratePage = () => (
     <div className="space-y-8">
@@ -505,6 +602,204 @@ export default function Home() {
     </div>
   );
 
+  // 渲染抖音文案页面
+  const renderTiktokPage = () => (
+    <div className="space-y-8">
+      {/* 全局生成进度提示 */}
+      {streamingProductId && (
+        <div className="glass-effect rounded-2xl shadow-xl border border-violet-200 bg-gradient-to-r from-violet-50 to-purple-50 p-6 animate-fade-in">
+          <div className="flex items-center justify-between">
+            <div className="flex items-center space-x-3">
+              <div className="relative">
+                <div className="w-10 h-10 rounded-full bg-gradient-to-r from-violet-500 to-purple-600 flex items-center justify-center">
+                  <span className="text-white text-lg">✨</span>
+                </div>
+                <div className="absolute inset-0 rounded-full bg-gradient-to-r from-violet-500 to-purple-600 animate-ping opacity-75"></div>
+              </div>
+              <div>
+                <p className="text-sm font-semibold text-violet-900">AI 正在生成文案...</p>
+                <p className="text-xs text-violet-600">DeepSeek V3.2 正在为您创作，请稍候</p>
+              </div>
+            </div>
+            <div className="flex items-center space-x-2">
+              <div className="w-8 h-8 rounded-full border-2 border-violet-300 border-t-transparent animate-spin"></div>
+              <span className="text-xs text-violet-600 font-medium">生成中</span>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* 顶部：风格选择 */}
+      <div className="glass-effect rounded-2xl shadow-xl border border-slate-200/50 p-8 animate-fade-in">
+        <div className="mb-6">
+          <h2 className="text-xl font-bold bg-gradient-to-r from-violet-600 to-purple-600 bg-clip-text text-transparent">
+            抖音/短视频文案生成
+          </h2>
+          <p className="text-sm text-slate-500 mt-1">
+            AI生成多风格短视频带货文案
+          </p>
+        </div>
+
+        <TikTokStyleSelector
+          options={tiktokOptions}
+          onChange={setTiktokOptions}
+          disabled={streamingProductId !== null}
+        />
+      </div>
+
+      {/* 商品列表 */}
+      <div className="glass-effect rounded-2xl shadow-xl border border-slate-200/50 p-8 animate-fade-in">
+        <div className="flex items-center justify-between mb-6">
+          <div>
+            <h2 className="text-xl font-bold bg-gradient-to-r from-violet-600 to-purple-600 bg-clip-text text-transparent">
+              商品列表 ({products.length})
+            </h2>
+            <p className="text-sm text-slate-500 mt-1">
+              选择商品生成对应风格的抖音文案
+            </p>
+          </div>
+          <Button
+            size="sm"
+            variant="gradient"
+            onClick={() => {
+              setEditingProduct(null);
+              setShowAddModal(true);
+            }}
+            className="shadow-lg shadow-purple-500/25"
+          >
+            <span className="mr-1">✨</span>
+            添加商品
+          </Button>
+        </div>
+
+        {products.length > 0 ? (
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+            {products.map(product => {
+              const tiktokCopy = tiktokResults.get(product.id);
+              return (
+                <div
+                  key={product.id}
+                  className="bg-white rounded-xl border border-slate-200 overflow-hidden hover:shadow-lg transition-shadow"
+                >
+                  {/* 商品图片 */}
+                  <div className="aspect-square bg-gradient-to-br from-violet-100 to-purple-100 relative overflow-hidden">
+                    {product.images[0] && (
+                      <img
+                        src={product.images[0]}
+                        alt={product.name}
+                        className="w-full h-full object-cover"
+                      />
+                    )}
+                    {tiktokCopy?.status === 'streaming' && (
+                      <div className="absolute inset-0 bg-black/50 flex items-center justify-center">
+                        <div className="text-white text-center">
+                          <div className="animate-spin text-3xl mb-2">⏳</div>
+                          <p className="text-sm font-medium">AI生成中...</p>
+                        </div>
+                      </div>
+                    )}
+                  </div>
+
+                  {/* 商品信息 */}
+                  <div className="p-4">
+                    <h3 className="font-semibold text-gray-900 truncate">{product.name}</h3>
+                    <p className="text-xs text-gray-500 mt-1">
+                      {product.category} · {product.brand}
+                    </p>
+
+                    {/* 生成按钮 */}
+                    {!tiktokCopy && (
+                      <Button
+                        size="sm"
+                        className="w-full mt-3"
+                        onClick={() => handleGenerateTiktok(product)}
+                        disabled={streamingProductId !== null}
+                      >
+                        <span className="mr-1">🎬</span>
+                        生成文案
+                      </Button>
+                    )}
+
+                    {/* 重新生成按钮 */}
+                    {tiktokCopy && tiktokCopy.status !== 'streaming' && (
+                      <Button
+                        size="sm"
+                        variant="outline"
+                        className="w-full mt-3"
+                        onClick={() => handleGenerateTiktok(product)}
+                        disabled={streamingProductId !== null}
+                      >
+                        <span className="mr-1">🔄</span>
+                        重新生成
+                      </Button>
+                    )}
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+        ) : (
+          <div className="text-center py-16 px-4">
+            <div className="w-20 h-20 mx-auto mb-4 rounded-full bg-gradient-to-br from-violet-100 to-purple-100 flex items-center justify-center">
+              <span className="text-4xl">📦</span>
+            </div>
+            <h3 className="text-lg font-semibold text-slate-900 mb-2">暂无商品</h3>
+            <p className="text-sm text-slate-500 mb-4">
+              点击上方"添加商品"按钮，或加载测试数据
+            </p>
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={handleLoadTestData}
+              disabled={isLoadingTestData}
+              className="mx-auto"
+            >
+              {isLoadingTestData ? (
+                <>
+                  <span className="mr-2 animate-spin">⏳</span>
+                  加载中...
+                </>
+              ) : (
+                <>
+                  <span className="mr-1">🚀</span>
+                  加载测试数据
+                </>
+              )}
+            </Button>
+          </div>
+        )}
+      </div>
+
+      {/* 生成结果 */}
+      {tiktokResults.size > 0 && (
+        <div className="glass-effect rounded-2xl shadow-xl border border-slate-200/50 p-8 animate-fade-in">
+          <div className="mb-6">
+            <h2 className="text-xl font-bold bg-gradient-to-r from-violet-600 to-purple-600 bg-clip-text text-transparent">
+              生成结果
+            </h2>
+            <p className="text-sm text-slate-500 mt-1">
+              已为 {Array.from(tiktokResults.values()).filter(r => r.status === 'completed').length} / {products.length} 个商品生成文案
+            </p>
+          </div>
+
+          <div className="space-y-6">
+            {products.map(product => {
+              const copy = tiktokResults.get(product.id);
+              if (!copy) return null;
+
+              return (
+                <div key={product.id} className="space-y-2">
+                  <h3 className="text-md font-semibold text-gray-800">{product.name}</h3>
+                  <TikTokResultCard copy={copy} productName={product.name} />
+                </div>
+              );
+            })}
+          </div>
+        </div>
+      )}
+    </div>
+  );
+
   return (
     <div className="min-h-screen bg-gradient-to-br from-slate-50 via-violet-50/20 to-purple-50/20">
       <Header activeTab={activeTab} onTabChange={setActiveTab} />
@@ -512,6 +807,7 @@ export default function Home() {
       <main className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
         {activeTab === 'home' && <OverviewPage products={products} results={results} onNavigate={setActiveTab} />}
         {activeTab === 'batch-generate' && renderBatchGeneratePage()}
+        {activeTab === 'tiktok' && renderTiktokPage()}
         {activeTab === 'template-library' && <TemplateLibraryPage />}
         {activeTab === 'settings' && <SettingsPage />}
       </main>

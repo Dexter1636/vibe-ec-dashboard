@@ -2,7 +2,7 @@
 
 import React from 'react';
 
-export type TabType = 'home' | 'batch-generate' | 'template-library' | 'settings';
+export type TabType = 'home' | 'batch-generate' | 'tiktok' | 'template-library' | 'settings';
 
 interface HeaderProps {
   activeTab: TabType;
@@ -12,6 +12,7 @@ interface HeaderProps {
 const tabs = [
   { id: 'home' as const, label: '首页', icon: '🏠', description: '项目概览' },
   { id: 'batch-generate' as const, label: '商品任务', icon: '✨', description: '批量生成' },
+  { id: 'tiktok' as const, label: '抖音文案', icon: '🎬', description: '短视频文案' },
   { id: 'template-library' as const, label: '模板库', icon: '📋', description: '图文模板' },
   { id: 'settings' as const, label: '设置', icon: '⚙️', description: '参数配置' },
 ];

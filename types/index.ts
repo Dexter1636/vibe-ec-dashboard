@@ -4,3 +4,4 @@ export * from './product';
 export * from './generated';
 export * from './template';
 export * from './material';
+export * from './tiktok';
