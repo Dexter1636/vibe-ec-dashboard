@@ -8,8 +8,9 @@ import { TemplateLibraryPage } from '@/components/template-library/TemplateLibra
 import { SettingsPage } from '@/components/settings/SettingsPage';
 import { TikTokStyleSelector, TikTokResultCard } from '@/components/tiktok-copy';
 import { ImageAnalysisResultCard } from '@/components/image-analysis';
+import { ImageStyleSelector, ProductSelector, PromptInput, ImageResultCard } from '@/components/image-generation';
 import { Button, Modal } from '@/components/ui';
-import { Product, ProductFormData, GeneratedContent, TikTokCopy, TikTokCopyOptions, ImageAnalysisResult } from '@/types';
+import { Product, ProductFormData, GeneratedContent, TikTokCopy, TikTokCopyOptions, ImageAnalysisResult, ImageGenerationOptions, GeneratedImage } from '@/types';
 import { generateBatchContent, generateId, storage, generateTestData, checkTestImages } from '@/lib';
 
 export default function Home() {
@@ -30,6 +31,15 @@ export default function Home() {
   });
   const [tiktokResults, setTiktokResults] = useState<Map<string, TikTokCopy>>(new Map());
   const [streamingProductId, setStreamingProductId] = useState<string | null>(null);
+
+  // Image generation states
+  const [imageOptions, setImageOptions] = useState<ImageGenerationOptions>({
+    styleId: 'product-cover',
+    inputMode: 'product',
+  });
+  const [imageResults, setImageResults] = useState<Map<string, GeneratedImage>>(new Map());
+  const [generatingImageId, setGeneratingImageId] = useState<string | null>(null);
+  const [selectedProductId, setSelectedProductId] = useState<string | null>(null);
 
   // Image analysis states
   const [imageAnalysisResults, setImageAnalysisResults] = useState<Map<string, ImageAnalysisResult>>(new Map());
@@ -417,6 +427,74 @@ export default function Home() {
         return prev;
       });
       setStreamingProductId(null);
+    }
+  };
+
+  // 生成图片
+  const handleGenerateImage = async () => {
+    if (imageOptions.inputMode === 'product' && !selectedProductId) {
+      alert('请先选择商品');
+      return;
+    }
+
+    if (imageOptions.inputMode === 'manual' && !imageOptions.manualPrompt) {
+      alert('请输入图片描述');
+      return;
+    }
+
+    const generationId = `img-${Date.now()}`;
+    setGeneratingImageId(generationId);
+
+    // Create initial result
+    const initialResult: GeneratedImage = {
+      id: generationId,
+      productId: selectedProductId,
+      styleId: imageOptions.styleId,
+      prompt: imageOptions.inputMode === 'product'
+        ? 'Building from product...'
+        : imageOptions.manualPrompt!,
+      imageUrl: '',
+      status: 'generating',
+      generatedAt: new Date(),
+    };
+    setImageResults(prev => new Map(prev).set(generationId, initialResult));
+
+    try {
+      const product = selectedProductId
+        ? products.find(p => p.id === selectedProductId)
+        : undefined;
+
+      const response = await fetch('/api/generate-image', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          options: imageOptions,
+          product,
+        }),
+      });
+
+      if (!response.ok) {
+        const errorData = await response.json();
+        throw new Error(errorData.error || 'Generation failed');
+      }
+
+      const data = await response.json();
+      setImageResults(prev => new Map(prev).set(generationId, data.result));
+    } catch (error) {
+      console.error('Image generation failed:', error);
+      setImageResults(prev => {
+        const result = prev.get(generationId);
+        if (result) {
+          return new Map(prev).set(generationId, {
+            ...result,
+            status: 'failed' as const,
+            error: error instanceof Error ? error.message : '生成失败',
+          });
+        }
+        return prev;
+      });
+    } finally {
+      setGeneratingImageId(null);
     }
   };
 
@@ -914,6 +992,123 @@ export default function Home() {
     </div>
   );
 
+  // 渲染图片生成页面
+  const renderImageGenerationPage = () => (
+    <div className="space-y-8">
+      {/* 全局生成进度 */}
+      {generatingImageId && (
+        <div className="glass-effect rounded-2xl shadow-xl border border-violet-200 bg-gradient-to-r from-violet-50 to-purple-50 p-6 animate-fade-in">
+          <div className="flex items-center justify-between">
+            <div className="flex items-center space-x-3">
+              <div className="relative">
+                <div className="w-10 h-10 rounded-full bg-gradient-to-r from-violet-500 to-purple-600 flex items-center justify-center">
+                  <span className="text-white text-lg">🎨</span>
+                </div>
+                <div className="absolute inset-0 rounded-full bg-gradient-to-r from-violet-500 to-purple-600 animate-ping opacity-75"></div>
+              </div>
+              <div>
+                <p className="text-sm font-semibold text-violet-900">AI 正在绘图...</p>
+                <p className="text-xs text-violet-600">Qwen-Image 正在为您生成，预计需要 30-120 秒</p>
+              </div>
+            </div>
+            <div className="flex items-center space-x-2">
+              <div className="w-8 h-8 rounded-full border-2 border-violet-300 border-t-transparent animate-spin"></div>
+              <span className="text-xs text-violet-600 font-medium">生成中</span>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* 样式选择和输入 */}
+      <div className="glass-effect rounded-2xl shadow-xl border border-slate-200/50 p-8 animate-fade-in">
+        <div className="mb-6">
+          <h2 className="text-xl font-bold bg-gradient-to-r from-violet-600 to-purple-600 bg-clip-text text-transparent">
+            AI 图片生成
+          </h2>
+          <p className="text-sm text-slate-500 mt-1">
+            使用 AI 生成电商海报、商品首图和社交媒体配图
+          </p>
+        </div>
+
+        <ImageStyleSelector
+          options={imageOptions}
+          onChange={setImageOptions}
+          disabled={generatingImageId !== null}
+        />
+
+        {/* Input Mode: Product Selection */}
+        {imageOptions.inputMode === 'product' && (
+          <div className="mt-6 pt-6 border-t border-gray-200">
+            <ProductSelector
+              products={products}
+              selectedProductId={selectedProductId}
+              onSelect={setSelectedProductId}
+              disabled={generatingImageId !== null}
+            />
+          </div>
+        )}
+
+        {/* Input Mode: Manual Prompt */}
+        {imageOptions.inputMode === 'manual' && (
+          <div className="mt-6 pt-6 border-t border-gray-200">
+            <PromptInput
+              value={imageOptions.manualPrompt || ''}
+              onChange={(value) => setImageOptions({ ...imageOptions, manualPrompt: value })}
+              disabled={generatingImageId !== null}
+            />
+          </div>
+        )}
+
+        {/* Generate Button */}
+        <div className="mt-6 flex justify-end">
+          <Button
+            onClick={handleGenerateImage}
+            disabled={generatingImageId !== null}
+            variant="gradient"
+            className="shadow-xl shadow-purple-500/25"
+          >
+            <span className="mr-2">🎨</span>
+            开始生成
+          </Button>
+        </div>
+      </div>
+
+      {/* Results */}
+      {imageResults.size > 0 && (
+        <div className="glass-effect rounded-2xl shadow-xl border border-slate-200/50 p-8 animate-fade-in">
+          <div className="mb-6">
+            <h2 className="text-xl font-bold bg-gradient-to-r from-violet-600 to-purple-600 bg-clip-text text-transparent">
+              生成结果
+            </h2>
+            <p className="text-sm text-slate-500 mt-1">
+              已生成 {Array.from(imageResults.values()).filter(r => r.status === 'completed').length} 张图片
+            </p>
+          </div>
+
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+            {Array.from(imageResults.values()).map(result => {
+              const product = result.productId
+                ? products.find(p => p.id === result.productId)
+                : undefined;
+
+              return (
+                <ImageResultCard
+                  key={result.id}
+                  result={result}
+                  productName={product?.name}
+                  onCopyUrl={() => {
+                    navigator.clipboard.writeText(result.imageUrl);
+                    alert('链接已复制到剪贴板');
+                  }}
+                />
+              );
+            })}
+          </div>
+        </div>
+      )}
+    </div>
+  );
+
   return (
     <div className="min-h-screen bg-gradient-to-br from-slate-50 via-violet-50/20 to-purple-50/20">
       <Header activeTab={activeTab} onTabChange={setActiveTab} />
@@ -922,6 +1117,7 @@ export default function Home() {
         {activeTab === 'home' && <OverviewPage products={products} results={results} onNavigate={setActiveTab} />}
         {activeTab === 'batch-generate' && renderBatchGeneratePage()}
         {activeTab === 'tiktok' && renderTiktokPage()}
+        {activeTab === 'image-generation' && renderImageGenerationPage()}
         {activeTab === 'template-library' && <TemplateLibraryPage />}
         {activeTab === 'settings' && <SettingsPage />}
       </main>

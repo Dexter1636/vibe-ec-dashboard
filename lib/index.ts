@@ -7,3 +7,5 @@ export * from './deepseekGenerator';
 export * from './storage';
 export * from './testDataGenerator';
 export * from './imageAnalysisGenerator';
+export * from './qwen-image/client';
+export * from './qwen-image/prompts';
